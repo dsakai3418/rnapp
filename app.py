@@ -28,7 +28,7 @@ def rigorous_normalize_address(address):
 
 # --- Streamlit UI ---
 st.title("店舗ID統合ツール")
-st.write("CSVファイルをアップロードし、「tacoms 対応ステータス」に基づいてRocketNow StoreIDを統合します。")
+st.write("CSVファイルをアップロードし、「tacoms 対応ステータス」に基づいてCamelLocationIDを統合します。")
 
 # ファイルアップローダー
 uploaded_file = st.file_uploader("CSVファイルをアップロードしてください", type=["csv"])
@@ -64,15 +64,15 @@ if uploaded_file is not None:
 
         # カラム名定義 (固定値)
         address_col = 'StoreAddress'
-        rocketnow_id_col = 'RocketNow StoreID'
+        camel_id_col = 'CamelLocationID' # 出力したいIDのカラム名
         tacoms_status_col = 'tacoms 対応ステータス'
 
         # 必須カラムの存在チェック
         missing_cols = []
         if address_col not in df_original.columns:
             missing_cols.append(address_col)
-        if rocketnow_id_col not in df_original.columns:
-            missing_cols.append(rocketnow_id_col)
+        if camel_id_col not in df_original.columns: # チェックするIDカラム名を変更
+            missing_cols.append(camel_id_col)
         if tacoms_status_col not in df_original.columns:
             missing_cols.append(tacoms_status_col)
 
@@ -102,38 +102,35 @@ if uploaded_file is not None:
                     st.write(f"過去データ件数: {len(df_past)}")
                     st.write(f"新規データ件数: {len(df_new)}")
 
-                    # 過去データから、正規化された住所とRocketNow StoreIDのマッピングを作成
-                    address_to_rocketnow_ids = {}
+                    # 過去データから、正規化された住所とCamelLocationIDのマッピングを作成
+                    # ここでは、住所に対して最初に見つかったCamelLocationIDを格納
+                    address_to_camel_id = {}
                     for index, row in df_past.iterrows():
                         normalized_addr = row[address_col + '_normalized']
-                        rocketnow_id = row[rocketnow_id_col]
+                        camel_id = row[camel_id_col] # CamelLocationIDを取得
                         
-                        if not normalized_addr or pd.isna(rocketnow_id):
+                        if not normalized_addr or pd.isna(camel_id):
                             continue
 
-                        if normalized_addr not in address_to_rocketnow_ids:
-                            address_to_rocketnow_ids[normalized_addr] = []
-                        
-                        str_rocketnow_id = str(rocketnow_id)
-                        if str_rocketnow_id not in [str(x) for x in address_to_rocketnow_ids[normalized_addr]]:
-                            address_to_rocketnow_ids[normalized_addr].append(rocketnow_id)
-
+                        # 同じ住所に対して複数のIDが見つかった場合、最初に見つかったものを採用
+                        if normalized_addr not in address_to_camel_id:
+                            address_to_camel_id[normalized_addr] = camel_id
+                            
                     # 新規データにIDを付与
-                    df_new['Matched_RocketNow_StoreIDs'] = np.nan
+                    df_new['Matched_CamelLocationID'] = np.nan # 新しいカラム名
 
                     for index, row in df_new.iterrows():
                         normalized_addr = row[address_col + '_normalized']
-                        if normalized_addr in address_to_rocketnow_ids:
-                            ids_list = address_to_rocketnow_ids[normalized_addr]
-                            if ids_list:
-                                df_new.at[index, 'Matched_RocketNow_StoreIDs'] = ','.join(map(str, ids_list))
+                        if normalized_addr in address_to_camel_id:
+                            # 該当するIDがあれば直接代入
+                            df_new.at[index, 'Matched_CamelLocationID'] = address_to_camel_id[normalized_addr]
 
-                    # --- 変更点: 出力データは新規分のみに限定 ---
-                    # 新規データから正規化用のカラムを削除
+                    # 出力データは新規分のみに限定
                     df_new_output = df_new.drop(columns=[address_col + '_normalized'], errors='ignore')
 
                 st.subheader("処理結果（新規データのみ）")
-                st.dataframe(df_new_output[[address_col, tacoms_status_col, 'Matched_RocketNow_StoreIDs']].head(10))
+                # 新規データフレームのプレビューを表示
+                st.dataframe(df_new_output[[address_col, tacoms_status_col, 'Matched_CamelLocationID']].head(10)) # 表示カラムも変更
                 st.write(f"処理が完了しました。新規データ（{len(df_new_output)}件）のみが出力対象です。")
 
                 # ダウンロードボタン
@@ -141,7 +138,7 @@ if uploaded_file is not None:
                 st.download_button(
                     label="結果CSVをダウンロード",
                     data=csv_output,
-                    file_name="新規データ_統合結果.csv",
+                    file_name="新規データ_統合結果_CamelID.csv", # ファイル名も変更
                     mime="text/csv"
                 )
 else:
